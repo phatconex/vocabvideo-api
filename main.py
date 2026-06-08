@@ -407,10 +407,17 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             gTTS(en.replace("/"," "), lang="en", tld=req.voice_accent).save(ep)
             audio_paths.append(ep)
 
-        # Build clips
-        clips = []
-        intro = ImageClip(np.array(render_frame(vocab,positions,-1,cfg))).with_duration(1.0)
-        clips.append(intro)
+        temp_videos = []
+
+        # Intro
+        intro_img = render_frame(vocab,positions,-1,cfg)
+        intro_path = os.path.join(tmp, "intro.png")
+        intro_img.save(intro_path)
+        intro = ImageClip(intro_path).with_duration(1.0)
+        intro_mp4 = os.path.join(tmp, "intro.mp4")
+        intro.write_videofile(intro_mp4, fps=30, codec="libx264", preset="ultrafast", logger=None)
+        intro.close()
+        temp_videos.append(intro_mp4)
 
         for i,(en,vi) in enumerate(vocab):
             ep = audio_paths[i]
@@ -461,17 +468,42 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             audio = concatenate_audioclips([s1,ea,s2])
             
             composite = CompositeVideoClip([bg_clip, animated_word]).with_duration(audio.duration)
-            clips.append(composite.with_audio(audio))
+            composite = composite.with_audio(audio)
+            
+            word_mp4 = os.path.join(tmp, f"word_{i}.mp4")
+            composite.write_videofile(
+                word_mp4, fps=30, codec="libx264", audio_codec="aac",
+                temp_audiofile=os.path.join(tmp, f"temp-audio-{i}.m4a"),
+                preset="ultrafast", threads=2, remove_temp=True, logger=None
+            )
+            composite.close()
+            bg_clip.close()
+            word_clip.close()
+            ea.close()
+            temp_videos.append(word_mp4)
 
-        outro = ImageClip(np.array(render_frame(vocab,positions,-1,cfg))).with_duration(1.5)
-        clips.append(outro)
+        # Outro
+        outro_img = render_frame(vocab,positions,-1,cfg)
+        outro_path = os.path.join(tmp, "outro.png")
+        outro_img.save(outro_path)
+        outro = ImageClip(outro_path).with_duration(1.5)
+        outro_mp4 = os.path.join(tmp, "outro.mp4")
+        outro.write_videofile(outro_mp4, fps=30, codec="libx264", preset="ultrafast", logger=None)
+        outro.close()
+        temp_videos.append(outro_mp4)
 
+        # Final concatenation
+        clips_to_concat = [VideoFileClip(p) for p in temp_videos]
         out_path = os.path.join(tmp, "output.mp4")
-        final    = concatenate_videoclips(clips, method="chain")
-        final.write_videofile(out_path, fps=30, codec="libx264",
-                              audio_codec="aac", temp_audiofile=os.path.join(tmp, "temp-audio.m4a"),
-                              preset="ultrafast", threads=2,
-                              remove_temp=True, logger=None)
+        final    = concatenate_videoclips(clips_to_concat, method="chain")
+        final.write_videofile(
+            out_path, fps=30, codec="libx264", audio_codec="aac",
+            temp_audiofile=os.path.join(tmp, "temp-audio-final.m4a"),
+            preset="ultrafast", threads=2, remove_temp=True, logger=None
+        )
+        final.close()
+        for c in clips_to_concat:
+            c.close()
         final.close()
 
         # Move to /tmp root so we can cleanup the dir but keep file
