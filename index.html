@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VocabVideo — Tạo video từ vựng tiếng Anh</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --blue: #4a90d9;
+      --blue-lt: #e8f3fc;
+      --yellow: #ffd54f;
+      --green: #66bb6a;
+      --red: #ef5350;
+      --bg: #f5f7ff;
+      --card: #ffffff;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e2e8f0;
+      --radius: 16px;
+      --shadow: 0 4px 24px rgba(74, 144, 217, .10);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Nunito Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+    }
+
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 900;
+      font-size: 22px;
+      color: var(--blue);
+      letter-spacing: -0.5px;
+    }
+
+    .logo span {
+      color: var(--yellow);
+    }
+
+    .badge {
+      background: var(--blue-lt);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    /* Main layout */
+    .main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 2rem;
+    }
+
+    @media(max-width:860px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panel */
+    .panel {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.5rem;
+    }
+
+    .panel-title {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-title .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--blue);
+      display: inline-block;
+    }
+
+    /* Form */
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 1rem;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    label:first-child {
+      margin-top: 0;
+    }
+
+    input[type=text],
+    input[type=color] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      transition: border .2s;
+      outline: none;
+      background: var(--bg);
+    }
+
+    input[type=text]:focus {
+      border-color: var(--blue);
+      background: #fff;
+    }
+
+    input[type=color] {
+      height: 44px;
+      padding: 4px;
+      cursor: pointer;
+    }
+
+    .color-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .color-group label {
+      margin-top: 0;
+    }
+
+    /* Vocab table */
+    .vocab-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 32px;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      padding: 0 0 8px 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+
+    .vocab-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 32px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .vocab-row input {
+      margin: 0;
+    }
+
+    .btn-remove {
+      width: 32px;
+      height: 36px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 18px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s;
+    }
+
+    .btn-remove:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: #fff5f5;
+    }
+
+    .btn-add {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      background: transparent;
+      cursor: pointer;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--muted);
+      transition: all .2s;
+    }
+
+    .btn-add:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+      background: var(--blue-lt);
+    }
+
+    /* Paste area */
+    .paste-area {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      background: var(--bg);
+      transition: border .2s;
+    }
+
+    .paste-area:focus {
+      border-color: var(--blue);
+      background: #fff;
+    }
+
+    .btn-parse {
+      margin-top: 8px;
+      padding: 8px 16px;
+      background: var(--blue-lt);
+      border: none;
+      border-radius: 8px;
+      color: var(--blue);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .2s;
+    }
+
+    .btn-parse:hover {
+      background: #d0e8f8;
+    }
+
+    /* Generate button */
+    .btn-generate {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 16px;
+      background: var(--blue);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-generate:hover {
+      background: #3a7ec9;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(74, 144, 217, .35);
+    }
+
+    .btn-generate:active {
+      transform: translateY(0);
+    }
+
+    .btn-generate:disabled {
+      background: #b0c4de;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, .4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Right col */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Preview */
+    .preview-canvas {
+      background: #e8f3fc;
+      border-radius: 12px;
+      overflow: hidden;
+      min-height: 200px;
+      padding: 16px;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 0 12px 20px 12px;
+    }
+
+    .vocab-card {
+      text-align: center;
+      transition: all .3s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .vocab-card .en {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 900;
+      font-size: 16px;
+      color: #fff;
+    }
+
+    .vocab-card .vi {
+      font-family: 'Nunito Sans', sans-serif;
+      font-weight: 800;
+      font-size: 12px;
+      color: var(--blue);
+      background: #fff;
+      padding: 4px 12px;
+      border-radius: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .vocab-card.active .en {
+      transform: scale(1.1);
+      color: var(--yellow);
+    }
+
+    /* Status */
+    .status-box {
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      display: none;
+    }
+
+    .status-box.info {
+      background: var(--blue-lt);
+      color: var(--blue);
+      display: block;
+    }
+
+    .status-box.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+      display: block;
+    }
+
+    .status-box.error {
+      background: #ffebee;
+      color: #c62828;
+      display: block;
+    }
+
+    /* Progress */
+    .progress-wrap {
+      display: none;
+      margin-top: 8px;
+    }
+
+    .progress-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--blue);
+      border-radius: 3px;
+      transition: width .3s;
+      width: 0%;
+    }
+
+    /* API config */
+    .api-note {
+      font-size: 12px;
+      color: var(--muted);
+      background: #fffbf0;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: .75rem;
+      line-height: 1.6;
+    }
+
+    .api-note a {
+      color: var(--blue);
+    }
+
+    /* Tips */
+    .tips {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .tips li {
+      margin-left: 1rem;
+    }
+
+    /* Font combo */
+    .font-combo {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .font-combo select,
+    .font-combo input[type=text] {
+      width: 100%;
+      height: 44px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 0 14px;
+      font-family: inherit;
+      font-size: 14px;
+      background: var(--bg);
+      outline: none;
+      transition: border .2s;
+    }
+
+    .font-combo input[type=text]:focus {
+      border-color: var(--blue);
+      background: #fff;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">Vocab<span>Video</span></div>
+      <span class="badge">Beta</span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- LEFT: Editor -->
+    <div style="display:flex;flex-direction:column;gap:1.5rem;">
+
+      <!-- Basic config -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot"></span> Cấu hình video</div>
+
+        <label style="margin-top:1rem;">Màu sắc & Style</label>
+        <div class="color-row" style="grid-template-columns: 1fr 1fr; margin-bottom: 15px;">
+          <div class="color-group">
+            <label>Nền Video</label>
+            <input type="color" id="bg_color" value="#1ebc46">
+          </div>
+          <div class="color-group">
+            <label>Từ Đang Đọc (Hover)</label>
+            <input type="color" id="highlight_color" value="#ffd54f">
+          </div>
+          <div class="color-group">
+            <label>Từ Tiếng Anh</label>
+            <input type="color" id="en_text_color" value="#ffffff">
+          </div>
+          <div class="color-group">
+            <label>Từ Tiếng Việt</label>
+            <input type="color" id="vi_text_color" value="#1565c0">
+          </div>
+          <div class="color-group">
+            <label>Nền Khung T.Việt</label>
+            <input type="color" id="pill_bg_color" value="#ffffff">
+          </div>
+          <div class="color-group">
+            <label>Font Chữ</label>
+            <select id="font_family" style="width: 100%; height: 44px; border: 1.5px solid var(--border); border-radius: 10px; padding: 0 10px; font-family: inherit; font-size: 14px; background: var(--bg); outline: none;">
+              <option value="Arial">Arial (Mặc định)</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New (Máy chữ)</option>
+              <option value="Tahoma">Tahoma</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Comic Sans MS">Comic Sans MS</option>
+            </select>
+          </div>
+          <div class="color-group" style="grid-column: 1 / -1;">
+            <label>Google Font (gợi ý phổ biến)</label>
+            <div class="font-combo">
+              <select id="google_font_preset" onchange="applyFontPreset()">
+                <option value="">— Chọn font gợi ý —</option>
+                <option value="Quicksand">Quicksand ✨</option>
+                <option value="Nunito">Nunito 🔤</option>
+                <option value="Baloo 2">Baloo 2 🎈</option>
+                <option value="Josefin Sans">Josefin Sans ✦</option>
+                <option value="Prompt">Prompt 🇹🇭</option>
+                <option value="Kanit">Kanit 🌿</option>
+                <option value="Pacifico">Pacifico 🌊</option>
+                <option value="Comfortaa">Comfortaa 💫</option>
+                <option value="Righteous">Righteous 🔥</option>
+                <option value="Lobster">Lobster 🦞</option>
+              </select>
+              <input type="text" id="google_font" placeholder="Hoặc nhập tên font tùy chỉnh..." style="height:44px;" oninput="onGoogleFontInput()">
+            </div>
+          </div>
+        </div>
+
+        <label style="margin-top:1rem;">Khác (Bố cục, Giọng đọc)</label>
+        <div class="color-row" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 15px;">
+          <div class="color-group">
+            <label>Số cột ngang</label>
+            <select id="cols" style="width: 100%; height: 44px; border: 1.5px solid var(--border); border-radius: 10px; padding: 0 10px; font-size: 14px; background: var(--bg); outline: none;">
+              <option value="2">2 cột (Cho từ dài)</option>
+              <option value="3" selected>3 cột (Chuẩn)</option>
+              <option value="4">4 cột (Cho từ ngắn)</option>
+            </select>
+          </div>
+          <div class="color-group">
+            <label>Khoảng cách dọc</label>
+            <input type="number" id="row_spacing" value="60" style="width: 100%; height: 44px; border: 1.5px solid var(--border); border-radius: 10px; padding: 0 14px; font-size: 15px;">
+          </div>
+          <div class="color-group">
+            <label>Giọng đọc (Accent)</label>
+            <select id="voice_accent" onchange="playTestVoice()" style="width: 100%; height: 44px; border: 1.5px solid var(--border); border-radius: 10px; padding: 0 10px; font-size: 14px; background: var(--bg); outline: none; transition: opacity 0.2s;">
+              <option value="com">Mỹ (US) - Mặc định</option>
+              <option value="co.uk">Anh (UK)</option>
+              <option value="com.au">Úc (AUS)</option>
+              <option value="ca">Canada (CAN)</option>
+              <option value="co.in">Ấn Độ (IND)</option>
+              <option value="ie">Ireland (IRE)</option>
+              <option value="co.za">Nam Phi (ZAF)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paste import -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot" style="background:#66bb6a"></span> Import nhanh</div>
+        <p class="tips" style="margin-bottom:10px;">Paste danh sách từ vựng (mỗi dòng: <code
+            style="background:#f0f0f0;padding:2px 6px;border-radius:4px">English, Tiếng Việt</code>)</p>
+        <textarea class="paste-area" id="paste_area"
+          placeholder="Family, Gia đình&#10;Father, Bố&#10;Mother, Mẹ&#10;Son, Con trai"></textarea>
+        <button class="btn-parse" onclick="parsePaste()">⚡ Import danh sách</button>
+      </div>
+
+      <!-- Vocab list -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot" style="background:#ff9800"></span> Danh sách từ vựng</div>
+        <div class="vocab-header">
+          <span>Tiếng Anh</span>
+          <span>Tiếng Việt</span>
+          <span></span>
+        </div>
+        <div id="vocab_list"></div>
+        <button class="btn-add" onclick="addRow()">+ Thêm từ</button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: Preview + Generate -->
+    <div class="right-col">
+
+      <!-- Preview -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot" style="background:#ab47bc"></span> Preview layout</div>
+        <div class="preview-canvas" id="preview_canvas">
+          <div class="card-grid" id="card_grid"></div>
+        </div>
+      </div>
+
+      <!-- Generate -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot" style="background:#ef5350"></span> Tạo video</div>
+
+        <label>API URL (backend của bạn)</label>
+        <input type="text" id="api_url" placeholder="https://your-app.onrender.com" value="">
+        <div class="api-note">
+          🚀 Deploy backend lên <a href="https://render.com" target="_blank">Render.com</a> miễn phí rồi paste URL vào
+          đây.<br>
+          Chưa deploy? <a href="#" onclick="showDeployGuide()">Xem hướng dẫn →</a>
+        </div>
+
+        <div class="status-box" id="status_box"></div>
+        <div class="progress-wrap" id="progress_wrap">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:6px;" id="progress_text">Đang xử lý...</div>
+          <div class="progress-track">
+            <div class="progress-bar" id="progress_bar"></div>
+          </div>
+        </div>
+
+        <button class="btn-generate" id="btn_generate" onclick="generateVideo()">
+          <span>🎬 Tạo video MP4</span>
+        </button>
+
+        <video id="result_video" controls style="width: 100%; max-height: 400px; border-radius: 12px; margin-top: 1.5rem; display: none; background: #000;"></video>
+      </div>
+
+      <!-- Tips -->
+      <div class="panel">
+        <div class="panel-title"><span class="dot" style="background:#26c6da"></span> Mẹo sử dụng</div>
+        <ul class="tips">
+          <li>Tối đa <strong>15-18 từ</strong> để layout đẹp nhất</li>
+          <li>Dùng dấu <code style="background:#f0f0f0;padding:1px 5px;border-radius:3px">/</code> để viết nhiều nghĩa
+            (VD: Anh/Em trai)</li>
+          <li>Video xuất ra <strong>1080×1920</strong> (dọc, phù hợp TikTok/Reels)</li>
+          <li>Thời gian tạo khoảng <strong>1-3 phút</strong> tùy số từ</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ========== LocalStorage ==========
+    const LS_KEY = 'vocabvideo_state';
+
+    function saveState() {
+      const vocab = [];
+      document.querySelectorAll('.vocab-row').forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        vocab.push([inputs[0].value, inputs[1].value]);
+      });
+      const state = {
+        vocab,
+        bg_color: document.getElementById('bg_color').value,
+        en_text_color: document.getElementById('en_text_color').value,
+        vi_text_color: document.getElementById('vi_text_color').value,
+        pill_bg_color: document.getElementById('pill_bg_color').value,
+        highlight_color: document.getElementById('highlight_color').value,
+        font_family: document.getElementById('font_family').value,
+        google_font: document.getElementById('google_font').value,
+        cols: document.getElementById('cols').value,
+        row_spacing: document.getElementById('row_spacing').value,
+        voice_accent: document.getElementById('voice_accent').value,
+        api_url: document.getElementById('api_url').value,
+      };
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        document.getElementById('bg_color').value = s.bg_color || '#1ebc46';
+        if (s.en_text_color) document.getElementById('en_text_color').value = s.en_text_color;
+        if (s.vi_text_color) document.getElementById('vi_text_color').value = s.vi_text_color;
+        if (s.pill_bg_color) document.getElementById('pill_bg_color').value = s.pill_bg_color;
+        if (s.highlight_color) document.getElementById('highlight_color').value = s.highlight_color;
+        if (s.font_family) document.getElementById('font_family').value = s.font_family;
+        if (s.google_font) {
+          document.getElementById('google_font').value = s.google_font;
+          // Sync select if it matches a preset
+          const presetSelect = document.getElementById('google_font_preset');
+          const optionExists = Array.from(presetSelect.options).some(opt => opt.value === s.google_font);
+          presetSelect.value = optionExists ? s.google_font : "";
+        }
+        if (s.cols) document.getElementById('cols').value = s.cols;
+        if (s.row_spacing) document.getElementById('row_spacing').value = s.row_spacing;
+        if (s.voice_accent) document.getElementById('voice_accent').value = s.voice_accent;
+        if (s.api_url) document.getElementById('api_url').value = s.api_url;
+        if (s.vocab && s.vocab.length > 0) {
+          document.getElementById('vocab_list').innerHTML = '';
+          s.vocab.forEach(([en, vi]) => addRow(en, vi));
+          return true;
+        }
+      } catch(e) { console.warn('loadState error', e); }
+      return false;
+    }
+
+    // ========== State ==========
+    const DEFAULT_VOCAB = [
+      ["Family", "Gia đình"], ["Father", "Bố"], ["Mother", "Mẹ"],
+      ["Son", "Con trai"], ["Daughter", "Con gái"], ["Brother", "Anh/Em trai"],
+      ["Sister", "Chị/Em gái"], ["Uncle", "Chú/cậu/bác trai"], ["Aunt", "Cô/dì/bác gái"],
+      ["Nephew", "Cháu trai"], ["Niece", "Cháu gái"], ["Cousin", "Anh/Chị em họ"],
+      ["Grandfather", "Ông"], ["Grandmother", "Bà"]
+    ];
+
+    // ========== Init ==========
+    window.onload = () => {
+      const restored = loadState();
+      if (!restored) {
+        DEFAULT_VOCAB.forEach(([en, vi]) => addRow(en, vi));
+      }
+      updatePreview();
+      // Auto-save on any input change
+      document.addEventListener('input', saveState);
+      document.addEventListener('change', saveState);
+    };
+
+    // ========== Vocab rows ==========
+    function addRow(en = "", vi = "") {
+      const list = document.getElementById('vocab_list');
+      const row = document.createElement('div');
+      row.className = 'vocab-row';
+      row.innerHTML = `
+    <input type="text" placeholder="English" value="${en}" oninput="updatePreview()">
+    <input type="text" placeholder="Tiếng Việt" value="${vi}" oninput="updatePreview()">
+    <button class="btn-remove" onclick="removeRow(this)" title="Xóa">×</button>
+  `;
+      list.appendChild(row);
+      updatePreview();
+    }
+
+    function removeRow(btn) {
+      btn.closest('.vocab-row').remove();
+      updatePreview();
+    }
+
+    function getVocab() {
+      const rows = document.querySelectorAll('.vocab-row');
+      const result = [];
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const en = inputs[0].value.trim();
+        const vi = inputs[1].value.trim();
+        if (en && vi) result.push({ english: en, vietnamese: vi });
+      });
+      return result;
+    }
+
+    // ========== Paste import ==========
+    function parsePaste() {
+      const text = document.getElementById('paste_area').value.trim();
+      if (!text) return;
+      const lines = text.split('\n').filter(l => l.trim());
+      const parsed = [];
+      lines.forEach(line => {
+        const sep = line.includes('\t') ? '\t' : ',';
+        const parts = line.split(sep);
+        if (parts.length >= 2) {
+          const en = parts[0].trim();
+          const vi = parts.slice(1).join(',').trim();
+          if (en && vi) parsed.push([en, vi]);
+        }
+      });
+      if (parsed.length === 0) { alert('Không tìm thấy từ vựng. Định dạng: "English, Tiếng Việt" mỗi dòng.'); return; }
+      document.getElementById('vocab_list').innerHTML = '';
+      parsed.forEach(([en, vi]) => addRow(en, vi));
+      document.getElementById('paste_area').value = '';
+      updatePreview();
+    }
+
+    // ========== Preview ==========
+    function applyFontPreset() {
+      const val = document.getElementById('google_font_preset').value;
+      document.getElementById('google_font').value = val;
+      if (val) {
+        loadGoogleFont(val, () => updatePreview());
+      } else {
+        updatePreview();
+      }
+      saveState();
+    }
+
+    function onGoogleFontInput() {
+      const val = document.getElementById('google_font').value.trim();
+      
+      // Sync select
+      const presetSelect = document.getElementById('google_font_preset');
+      const optionExists = Array.from(presetSelect.options).some(opt => opt.value === val);
+      presetSelect.value = optionExists ? val : "";
+
+      if (val) {
+        loadGoogleFont(val, () => updatePreview());
+      } else {
+        updatePreview();
+      }
+      saveState();
+    }
+
+    function playTestVoice() {
+      saveState();
+      const tld = document.getElementById('voice_accent').value;
+      let baseUrl = document.getElementById('api_url').value.replace(/\/+$/, '');
+      if (!baseUrl) baseUrl = "http://127.0.0.1:8000";
+      
+      const select = document.getElementById('voice_accent');
+      select.style.opacity = '0.5';
+      const audio = new Audio(`${baseUrl}/api/test_voice?tld=${tld}`);
+      audio.onplay = () => select.style.opacity = '1';
+      audio.onerror = () => { select.style.opacity = '1'; alert("Không thể tải âm thanh test. Đảm bảo API đang chạy!"); }
+      audio.onended = () => select.style.opacity = '1';
+      audio.play().catch(e => {
+        select.style.opacity = '1';
+        console.error("Audio play error", e);
+      });
+    }
+
+    function loadGoogleFont(family, callback) {
+      const fontId = 'gfont-' + family.replace(/\s+/g, '-').toLowerCase();
+      const existing = document.getElementById(fontId);
+      if (existing) {
+        // Already loading/loaded — just update immediately
+        updatePreview();
+        return;
+      }
+      const link = document.createElement('link');
+      link.id = fontId;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${family.replace(/\s+/g, '+')}:wght@400;700&display=swap`;
+      link.onload = () => { if (callback) callback(); };
+      document.head.appendChild(link);
+      // Also call immediately in case onload doesn't fire fast enough
+      setTimeout(() => updatePreview(), 300);
+    }
+
+    function updatePreview() {
+      const hlColor = document.getElementById('highlight_color').value;
+      const bgColor = document.getElementById('bg_color').value;
+      const enColor = document.getElementById('en_text_color').value;
+      const viColor = document.getElementById('vi_text_color').value;
+      const pillBgColor = document.getElementById('pill_bg_color').value;
+      let fontFamily = document.getElementById('font_family').value;
+      const googleFont = document.getElementById('google_font').value.trim();
+      const cols = document.getElementById('cols').value;
+      
+      if (googleFont) {
+        fontFamily = googleFont;
+        // Ensure font is loaded (will no-op if already queued)
+        const fontId = 'gfont-' + googleFont.replace(/\s+/g, '-').toLowerCase();
+        if (!document.getElementById(fontId)) {
+          loadGoogleFont(googleFont, () => updatePreview());
+          return; // Will re-run once font loads
+        }
+      }
+      
+      const vocab = getVocab();
+
+      const canvas = document.getElementById('preview_canvas');
+      canvas.style.background = bgColor;
+      canvas.style.fontFamily = `"${fontFamily}", sans-serif`;
+
+      const grid = document.getElementById('card_grid');
+      grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      grid.innerHTML = '';
+      vocab.forEach(({ english, vietnamese }) => {
+        const card = document.createElement('div');
+        card.className = 'vocab-card';
+        card.innerHTML = `
+          <div class="en" style="color: ${enColor}; font-size: 16px; font-weight: bold; font-family: '${fontFamily}', sans-serif; transition: color 0.3s;">${english}</div>
+          <div class="vi" style="color: ${viColor}; font-size: 12px; font-weight: bold; background: ${pillBgColor}; font-family: '${fontFamily}', sans-serif;">${vietnamese}</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // Animate preview highlight khi hover
+    document.getElementById('card_grid').addEventListener('mouseover', e => {
+      const card = e.target.closest('.vocab-card');
+      if (!card) return;
+      const hlColor = document.getElementById('highlight_color').value;
+      const enColor = document.getElementById('en_text_color').value;
+      
+      document.querySelectorAll('.vocab-card').forEach(c => {
+        c.classList.remove('active');
+        c.querySelector('.en').style.color = enColor;
+      });
+      card.classList.add('active');
+      card.querySelector('.en').style.color = hlColor;
+    });
+    document.getElementById('card_grid').addEventListener('mouseleave', () => {
+      const enColor = document.getElementById('en_text_color').value;
+      document.querySelectorAll('.vocab-card').forEach(c => {
+        c.classList.remove('active');
+        c.querySelector('.en').style.color = enColor;
+      });
+    });
+
+    // ========== Generate ==========
+    async function generateVideo() {
+      const apiUrl = document.getElementById('api_url').value.trim().replace(/\/$/, '');
+      if (!apiUrl) { showStatus('error', '⚠️ Vui lòng nhập API URL của backend.'); return; }
+
+      const vocab = getVocab();
+      if (vocab.length === 0) { showStatus('error', '⚠️ Chưa có từ vựng nào.'); return; }
+
+      const btn = document.getElementById('btn_generate');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div><span>Đang tạo video...</span>';
+      showStatus('info', `⏳ Đang gửi ${vocab.length} từ đến server...`);
+      showProgress(true, 10, 'Đang kết nối server...');
+
+      const body = {
+        vocab: vocab,
+        bg_color: document.getElementById('bg_color').value,
+        en_text_color: document.getElementById('en_text_color').value,
+        vi_text_color: document.getElementById('vi_text_color').value,
+        pill_bg_color: document.getElementById('pill_bg_color').value,
+        highlight_color: document.getElementById('highlight_color').value,
+        font_family: document.getElementById('font_family').value,
+        google_font: document.getElementById('google_font').value.trim(),
+        cols: parseInt(document.getElementById('cols').value) || 3,
+        row_spacing: parseInt(document.getElementById('row_spacing').value) || 60,
+        voice_accent: document.getElementById('voice_accent').value
+      };
+
+      try {
+        showProgress(true, 30, 'Đang generate giọng đọc...');
+        const res = await fetch(`${apiUrl}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        showProgress(true, 70, 'Đang render video...');
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: 'Server error' }));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+
+        showProgress(true, 95, 'Đang chuẩn bị download...');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Vocabulary_Video.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(a);
+          // Only revoke if we aren't using it in the video element, but since we want to preview it, let's keep it
+        }, 2000);
+
+        // Show the video in the review frame
+        const videoEl = document.getElementById('result_video');
+        videoEl.src = url;
+        videoEl.style.display = 'block';
+
+        showProgress(true, 100, 'Hoàn thành!');
+        showStatus('success', `✅ Video tạo xong! Đã tải xuống và bạn có thể xem lại bên trên.`);
+
+      } catch (e) {
+        showStatus('error', `❌ Lỗi: ${e.message}`);
+        showProgress(false);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🎬 Tạo video MP4</span>';
+      }
+    }
+
+    function showStatus(type, msg) {
+      const box = document.getElementById('status_box');
+      box.className = `status-box ${type}`;
+      box.textContent = msg;
+    }
+
+    function showProgress(show, pct = 0, text = '') {
+      const wrap = document.getElementById('progress_wrap');
+      wrap.style.display = show ? 'block' : 'none';
+      document.getElementById('progress_bar').style.width = pct + '%';
+      document.getElementById('progress_text').textContent = text;
+    }
+
+    function showDeployGuide() {
+      alert(`Hướng dẫn deploy backend lên Render.com:\n\n1. Tạo tài khoản tại render.com (miễn phí)\n2. New → Web Service → Connect GitHub repo\n3. Upload 3 files: main.py, requirements.txt, render.yaml\n4. Deploy → Copy URL dán vào ô API URL\n\nChi tiết xem file README.md đi kèm.`);
+    }
+  </script>
+</body>
+
+</html>
