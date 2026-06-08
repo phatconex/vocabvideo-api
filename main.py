@@ -374,7 +374,7 @@ def calc_positions(n, cols, cfg, vocab=None):
 
 
 @app.post("/generate")
-async def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
+def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())[:8]
     tmp    = tempfile.mkdtemp(prefix=f"vocab_{job_id}_")
 
@@ -452,8 +452,8 @@ async def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks
             animated_word = word_clip.resized(make_scale).with_position(make_pos_func(cx_abs, cy_abs, cw, cell_h))
             
             ea    = AudioFileClip(ep)
-            s1    = AudioClip(lambda t:[0,0], duration=0.3, fps=44100)
-            s2    = AudioClip(lambda t:[0,0], duration=0.8, fps=44100)
+            s1    = AudioClip(lambda t: [0,0], duration=0.3)
+            s2    = AudioClip(lambda t: [0,0], duration=0.8)
             audio = concatenate_audioclips([s1,ea,s2])
             
             composite = CompositeVideoClip([bg_clip, animated_word]).with_duration(audio.duration)
@@ -463,7 +463,7 @@ async def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks
         clips.append(outro)
 
         out_path = os.path.join(tmp, "output.mp4")
-        final    = concatenate_videoclips(clips, method="compose")
+        final    = concatenate_videoclips(clips, method="chain")
         final.write_videofile(out_path, fps=30, codec="libx264",
                               audio_codec="aac", temp_audiofile=os.path.join(tmp, "temp-audio.m4a"),
                               remove_temp=True, logger=None)
