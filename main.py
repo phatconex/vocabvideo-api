@@ -4,7 +4,7 @@ Deploy: Render.com (free tier)
 """
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import os, uuid, shutil, tempfile, numpy as np
 import urllib.request, zipfile, io
@@ -417,7 +417,9 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             
             # The background frame (missing the active word)
             bg_img = render_frame(vocab, positions, active_idx=i, cfg=cfg, skip_idx=i)
-            bg_clip = ImageClip(np.array(bg_img))
+            bg_path = os.path.join(tmp, f"bg_{i}.png")
+            bg_img.save(bg_path)
+            bg_clip = ImageClip(bg_path)
             
             # The active word cell
             pos = positions[i]
@@ -428,6 +430,8 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             cy_abs = y1 + cell_h/2
 
             word_img = render_word_cell((en, vi), pos, cfg, ef, vf, en_top, std_eh, vi_top, std_vh, cw)
+            word_path = os.path.join(tmp, f"word_{i}.png")
+            word_img.save(word_path)
             arr = np.array(word_img)
             rgb = arr[:, :, :3]
             mask = arr[:, :, 3] / 255.0
@@ -466,6 +470,7 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         final    = concatenate_videoclips(clips, method="chain")
         final.write_videofile(out_path, fps=30, codec="libx264",
                               audio_codec="aac", temp_audiofile=os.path.join(tmp, "temp-audio.m4a"),
+                              preset="ultrafast", threads=2,
                               remove_temp=True, logger=None)
         final.close()
 
@@ -483,7 +488,9 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
 
     except Exception as e:
         shutil.rmtree(tmp, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"detail": str(e)}, headers={"Access-Control-Allow-Origin": "*"})
 
 @app.get("/api/test_voice")
 def test_voice(tld: str = "com", background_tasks: BackgroundTasks = None):
