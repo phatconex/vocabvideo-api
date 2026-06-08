@@ -407,6 +407,15 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             gTTS(en.replace("/"," "), lang="en", tld=req.voice_accent).save(ep)
             audio_paths.append(ep)
 
+        import subprocess
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        def make_silence(t):
+            if hasattr(t, '__len__'):
+                return np.zeros((len(t), 2))
+            return np.zeros(2)
+
         temp_videos = []
 
         # Intro
@@ -414,8 +423,9 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         intro_path = os.path.join(tmp, "intro.png")
         intro_img.save(intro_path)
         intro = ImageClip(intro_path).with_duration(1.0)
+        intro = intro.with_audio(AudioClip(make_silence, duration=1.0))
         intro_mp4 = os.path.join(tmp, "intro.mp4")
-        intro.write_videofile(intro_mp4, fps=30, codec="libx264", preset="ultrafast", logger=None)
+        intro.write_videofile(intro_mp4, fps=30, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
         intro.close()
         temp_videos.append(intro_mp4)
 
@@ -463,8 +473,8 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             animated_word = word_clip.resized(make_scale).with_position(make_pos_func(cx_abs, cy_abs, cw, cell_h))
             
             ea    = AudioFileClip(ep)
-            s1    = AudioClip(lambda t: [0,0], duration=0.3)
-            s2    = AudioClip(lambda t: [0,0], duration=0.8)
+            s1    = AudioClip(make_silence, duration=0.3)
+            s2    = AudioClip(make_silence, duration=0.8)
             audio = concatenate_audioclips([s1,ea,s2])
             
             composite = CompositeVideoClip([bg_clip, animated_word]).with_duration(audio.duration)
@@ -487,24 +497,24 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         outro_path = os.path.join(tmp, "outro.png")
         outro_img.save(outro_path)
         outro = ImageClip(outro_path).with_duration(1.5)
+        outro = outro.with_audio(AudioClip(make_silence, duration=1.5))
         outro_mp4 = os.path.join(tmp, "outro.mp4")
-        outro.write_videofile(outro_mp4, fps=30, codec="libx264", preset="ultrafast", logger=None)
+        outro.write_videofile(outro_mp4, fps=30, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
         outro.close()
         temp_videos.append(outro_mp4)
 
-        # Final concatenation
-        clips_to_concat = [VideoFileClip(p) for p in temp_videos]
+        # Final concatenation via FFmpeg copy
+        list_file = os.path.join(tmp, "list.txt")
+        with open(list_file, "w") as f:
+            for p in temp_videos:
+                f.write(f"file '{p}'\n")
+
         out_path = os.path.join(tmp, "output.mp4")
-        final    = concatenate_videoclips(clips_to_concat, method="chain")
-        final.write_videofile(
-            out_path, fps=30, codec="libx264", audio_codec="aac",
-            temp_audiofile=os.path.join(tmp, "temp-audio-final.m4a"),
-            preset="ultrafast", threads=2, remove_temp=True, logger=None
-        )
-        final.close()
-        for c in clips_to_concat:
-            c.close()
-        final.close()
+        cmd = [
+            ffmpeg_exe, "-y", "-f", "concat", "-safe", "0",
+            "-i", list_file, "-c", "copy", out_path
+        ]
+        subprocess.run(cmd, check=True)
 
         # Move to /tmp root so we can cleanup the dir but keep file
         result_path = f"/tmp/vocabvideo_{job_id}.mp4"
