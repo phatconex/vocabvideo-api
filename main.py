@@ -444,6 +444,8 @@ def generate_video_task(req: GenerateRequest, job_id: str):
                 return np.zeros((len(t), 2))
             return np.zeros(2)
 
+        import gc
+
         temp_videos = []
 
         # Intro
@@ -451,17 +453,22 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         intro_path = os.path.join(tmp, "intro.png")
         intro_img.save(intro_path)
         intro = ImageClip(intro_path).with_duration(1.0)
-        intro = intro.with_audio(AudioClip(make_silence, duration=1.0))
+        intro_audio = AudioClip(make_silence, duration=1.0)
+        intro_final = intro.with_audio(intro_audio)
         intro_mp4 = os.path.join(tmp, "intro.mp4")
-        intro.write_videofile(intro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
+        intro_final.write_videofile(intro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
+        intro_final.close()
         intro.close()
+        intro_audio.close()
+        del intro_img, intro, intro_audio, intro_final
+        gc.collect()
         temp_videos.append(intro_mp4)
 
         for i,(en,vi) in enumerate(vocab):
             update_status(job_id, {"status": "processing", "progress": i, "total": len(vocab), "detail": f"Đang render từ {i+1}/{len(vocab)}..."})
             ep = audio_paths[i]
             
-            # The background frame (missing the active word)
+            # The background frame
             bg_img = render_frame(vocab, positions, active_idx=i, cfg=cfg, skip_idx=i)
             bg_path = os.path.join(tmp, f"bg_{i}.png")
             bg_img.save(bg_path)
@@ -481,18 +488,18 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             arr = np.array(word_img)
             rgb = arr[:, :, :3]
             mask = arr[:, :, 3] / 255.0
-            word_clip = ImageClip(rgb).with_mask(ImageClip(mask, is_mask=True))
+            mask_clip = ImageClip(mask, is_mask=True)
+            word_clip_raw = ImageClip(rgb)
+            word_clip = word_clip_raw.with_mask(mask_clip)
             
             # Dynamic zoom animation func
             def make_scale(t):
-                # Pop out quickly to 1.15x, then settle back to 1.0x
                 if t < 0.15:
                     return 1.0 + (t/0.15) * 0.15
                 elif t < 0.3:
                     return 1.15 - ((t-0.15)/0.15) * 0.15
                 return 1.0
             
-            # We capture local copies of the variables for the lambda functions
             def make_pos_func(cx, cy, cw_val, ch_val):
                 def pos_func(t):
                     s = make_scale(t)
@@ -507,18 +514,33 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             audio = concatenate_audioclips([s1,ea,s2])
             
             composite = CompositeVideoClip([bg_clip, animated_word]).with_duration(audio.duration)
-            composite = composite.with_audio(audio)
+            composite_final = composite.with_audio(audio)
             
             word_mp4 = os.path.join(tmp, f"word_{i}.mp4")
-            composite.write_videofile(
+            composite_final.write_videofile(
                 word_mp4, fps=15, codec="libx264", audio_codec="aac",
                 temp_audiofile=os.path.join(tmp, f"temp-audio-{i}.m4a"),
-                preset="ultrafast", threads=2, remove_temp=True, logger=None
+                preset="ultrafast", threads=1, remove_temp=True, logger=None
             )
+            
+            # Close EVERYTHING
+            composite_final.close()
             composite.close()
-            bg_clip.close()
+            animated_word.close()
             word_clip.close()
+            word_clip_raw.close()
+            mask_clip.close()
+            bg_clip.close()
+            s1.close()
+            s2.close()
+            audio.close()
             ea.close()
+            
+            # Force GC
+            del bg_img, word_img, arr, rgb, mask
+            del composite_final, composite, animated_word, word_clip, word_clip_raw, mask_clip, bg_clip, s1, s2, audio, ea
+            gc.collect()
+            
             temp_videos.append(word_mp4)
 
         # Outro
@@ -526,10 +548,15 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         outro_path = os.path.join(tmp, "outro.png")
         outro_img.save(outro_path)
         outro = ImageClip(outro_path).with_duration(1.5)
-        outro = outro.with_audio(AudioClip(make_silence, duration=1.5))
+        outro_audio = AudioClip(make_silence, duration=1.5)
+        outro_final = outro.with_audio(outro_audio)
         outro_mp4 = os.path.join(tmp, "outro.mp4")
-        outro.write_videofile(outro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
+        outro_final.write_videofile(outro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
+        outro_final.close()
         outro.close()
+        outro_audio.close()
+        del outro_img, outro, outro_audio, outro_final
+        gc.collect()
         temp_videos.append(outro_mp4)
 
         # Final concatenation via FFmpeg copy
