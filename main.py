@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import os, uuid, shutil, tempfile, numpy as np
-import urllib.request, zipfile, io
+import urllib.request, zipfile, io, json
 from typing import List
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
@@ -373,10 +373,37 @@ def calc_positions(n, cols, cfg, vocab=None):
     return pos
 
 
+def update_status(job_id, data):
+    try:
+        with open(f"/tmp/status_{job_id}.json", "w") as f:
+            json.dump(data, f)
+    except:
+        pass
+
 @app.post("/generate")
-def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
+def start_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())[:8]
-    tmp    = tempfile.mkdtemp(prefix=f"vocab_{job_id}_")
+    update_status(job_id, {"status": "processing", "progress": 0, "total": len(req.vocab), "detail": "Đang chuẩn bị..."})
+    background_tasks.add_task(generate_video_task, req, job_id)
+    return {"job_id": job_id}
+
+@app.get("/status/{job_id}")
+def get_status(job_id: str):
+    path = f"/tmp/status_{job_id}.json"
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return {"status": "unknown"}
+
+@app.get("/download/{job_id}")
+def download_video(job_id: str):
+    path = f"/tmp/vocabvideo_{job_id}.mp4"
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Video not found")
+    return FileResponse(path, media_type="video/mp4", filename="Vocabulary_Video.mp4")
+
+def generate_video_task(req: GenerateRequest, job_id: str):
+    tmp = tempfile.mkdtemp(prefix=f"vocab_{job_id}_")
 
     try:
         vocab = [(v.english, v.vietnamese) for v in req.vocab]
@@ -403,7 +430,8 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         # Generate TTS
         audio_paths = []
         for i,(en,vi) in enumerate(vocab):
-            ep = os.path.join(tmp,f"w{i:03d}_en.mp3")
+            update_status(job_id, {"status": "processing", "progress": 0, "total": len(vocab), "detail": f"Đang tạo giọng đọc ({i+1}/{len(vocab)})..."})
+            ep = os.path.join(tmp, f"en_{i}.mp3")
             gTTS(en.replace("/"," "), lang="en", tld=req.voice_accent).save(ep)
             audio_paths.append(ep)
 
@@ -425,11 +453,12 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         intro = ImageClip(intro_path).with_duration(1.0)
         intro = intro.with_audio(AudioClip(make_silence, duration=1.0))
         intro_mp4 = os.path.join(tmp, "intro.mp4")
-        intro.write_videofile(intro_mp4, fps=30, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
+        intro.write_videofile(intro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
         intro.close()
         temp_videos.append(intro_mp4)
 
         for i,(en,vi) in enumerate(vocab):
+            update_status(job_id, {"status": "processing", "progress": i, "total": len(vocab), "detail": f"Đang render từ {i+1}/{len(vocab)}..."})
             ep = audio_paths[i]
             
             # The background frame (missing the active word)
@@ -482,7 +511,7 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
             
             word_mp4 = os.path.join(tmp, f"word_{i}.mp4")
             composite.write_videofile(
-                word_mp4, fps=30, codec="libx264", audio_codec="aac",
+                word_mp4, fps=15, codec="libx264", audio_codec="aac",
                 temp_audiofile=os.path.join(tmp, f"temp-audio-{i}.m4a"),
                 preset="ultrafast", threads=2, remove_temp=True, logger=None
             )
@@ -499,11 +528,12 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         outro = ImageClip(outro_path).with_duration(1.5)
         outro = outro.with_audio(AudioClip(make_silence, duration=1.5))
         outro_mp4 = os.path.join(tmp, "outro.mp4")
-        outro.write_videofile(outro_mp4, fps=30, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
+        outro.write_videofile(outro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
         outro.close()
         temp_videos.append(outro_mp4)
 
         # Final concatenation via FFmpeg copy
+        update_status(job_id, {"status": "processing", "progress": len(vocab), "total": len(vocab), "detail": "Đang ghép nối video..."})
         list_file = os.path.join(tmp, "list.txt")
         with open(list_file, "w") as f:
             for p in temp_videos:
@@ -520,19 +550,14 @@ def generate_video(req: GenerateRequest, background_tasks: BackgroundTasks):
         result_path = f"/tmp/vocabvideo_{job_id}.mp4"
         shutil.copy(out_path, result_path)
         shutil.rmtree(tmp)
-
-        background_tasks.add_task(os.remove, result_path)
-        return FileResponse(
-            result_path,
-            media_type="video/mp4",
-            filename=f"Vocabulary_Video.mp4",
-        )
+        
+        update_status(job_id, {"status": "done", "detail": "Hoàn tất!"})
 
     except Exception as e:
         shutil.rmtree(tmp, ignore_errors=True)
         import traceback
         traceback.print_exc()
-        return JSONResponse(status_code=500, content={"detail": str(e)}, headers={"Access-Control-Allow-Origin": "*"})
+        update_status(job_id, {"status": "error", "detail": str(e)})
 
 @app.get("/api/test_voice")
 def test_voice(tld: str = "com", background_tasks: BackgroundTasks = None):

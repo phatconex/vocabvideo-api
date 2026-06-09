@@ -949,22 +949,49 @@
       };
 
       try {
-        showProgress(true, 30, 'Đang generate giọng đọc...');
+        showProgress(true, 5, 'Đang bắt đầu...');
         const res = await fetch(`${apiUrl}/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
 
-        showProgress(true, 70, 'Đang render video...');
-
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: 'Server error' }));
           throw new Error(err.detail || `HTTP ${res.status}`);
         }
 
-        showProgress(true, 95, 'Đang chuẩn bị download...');
-        const blob = await res.blob();
+        const data = await res.json();
+        const jobId = data.job_id;
+        if (!jobId) throw new Error("Không nhận được mã tiến trình");
+
+        // Polling loop
+        while (true) {
+          await new Promise(r => setTimeout(r, 2000));
+          const statusRes = await fetch(`${apiUrl}/status/${jobId}`);
+          if (!statusRes.ok) throw new Error("Lỗi kết nối tới máy chủ");
+          
+          const statusData = await statusRes.json();
+          if (statusData.status === "error") {
+            throw new Error(statusData.detail || "Lỗi khi tạo video trên máy chủ");
+          }
+          if (statusData.status === "processing") {
+            let pct = 10;
+            if (statusData.total && statusData.total > 0) {
+              pct = 10 + Math.floor((statusData.progress / statusData.total) * 80);
+            }
+            showProgress(true, pct, statusData.detail || 'Đang xử lý video...');
+          }
+          if (statusData.status === "done") {
+            break;
+          }
+        }
+
+        showProgress(true, 95, 'Đang tải video về máy...');
+        const dlRes = await fetch(`${apiUrl}/download/${jobId}`);
+        if (!dlRes.ok) throw new Error("Không tải được file video");
+        
+        const blob = await dlRes.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
@@ -975,7 +1002,6 @@
         
         setTimeout(() => {
           document.body.removeChild(a);
-          // Only revoke if we aren't using it in the video element, but since we want to preview it, let's keep it
         }, 2000);
 
         // Show the video in the review frame
@@ -984,7 +1010,7 @@
         videoEl.style.display = 'block';
 
         showProgress(true, 100, 'Hoàn thành!');
-        showStatus('success', `✅ Video tạo xong! Đã tải xuống và bạn có thể xem lại bên trên.`);
+        showStatus('success', `✅ Video tạo xong! Đã tải xuống và bạn có thể xem lại bên dưới.`);
 
       } catch (e) {
         showStatus('error', `❌ Lỗi: ${e.message}`);
