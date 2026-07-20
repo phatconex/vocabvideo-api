@@ -853,6 +853,10 @@
           if (!statusRes.ok) throw new Error("Lỗi kết nối tới máy chủ");
           const statusData = await statusRes.json();
           
+          if (statusData.status === "unknown") {
+            throw new Error("Tiến trình bị mất trên máy chủ (có thể do server khởi động lại). Vui lòng thử lại!");
+          }
+
           if (statusData.status === "error") {
             throw new Error(statusData.detail || "Lỗi khi tạo video trên máy chủ");
           }

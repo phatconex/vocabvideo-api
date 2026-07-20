@@ -1,0 +1,15 @@
+{
+  "vocab": [
+    {"english": "Hello", "vietnamese": "Xin chào"}
+  ],
+  "highlight_color": "#ffd54f",
+  "bg_color": "#1ebc46",
+  "en_text_color": "#ffffff",
+  "vi_text_color": "#1565c0",
+  "pill_bg_color": "#ffffff",
+  "font_family": "Arial",
+  "google_font": "",
+  "cols": 3,
+  "row_spacing": 60,
+  "voice_accent": "com"
+}
