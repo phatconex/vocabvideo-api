@@ -519,8 +519,18 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             silence_after = out_path + "_sa.wav"
             make_silence_wav(silence_before, 0.3)
             make_silence_wav(silence_after, 0.8)
+            
+            # Convert MP3 to standard WAV (44100Hz, stereo, pcm_s16le) for safe concatenation
+            audio_wav = out_path + "_audio.wav"
+            cmd_conv = [
+                ffmpeg_exe, "-y", "-i", audio_path,
+                "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le",
+                audio_wav
+            ]
+            subprocess.run(cmd_conv, check=True, capture_output=True)
+            
             full_audio = out_path + "_full_audio.aac"
-            concat_audio_clips([silence_before, audio_path, silence_after], out_path + "_full.wav")
+            concat_audio_clips([silence_before, audio_wav, silence_after], out_path + "_full.wav")
 
             # Convert to AAC
             cmd_aac = [ffmpeg_exe, "-y", "-i", out_path + "_full.wav", "-c:a", "aac", "-b:a", "64k", full_audio]
@@ -548,7 +558,7 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             subprocess.run(cmd, check=True, capture_output=True)
 
             # Cleanup temp audio files
-            for f in [silence_before, silence_after, full_audio, out_path + "_full.wav"]:
+            for f in [silence_before, silence_after, audio_wav, full_audio, out_path + "_full.wav"]:
                 try: os.remove(f)
                 except: pass
 
