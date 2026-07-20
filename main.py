@@ -390,8 +390,11 @@ def start_generate(req: GenerateRequest, background_tasks: BackgroundTasks):
 def get_status(job_id: str):
     path = f"/tmp/status_{job_id}.json"
     if os.path.exists(path):
-        with open(path, "r") as f:
-            return json.load(f)
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {"status": "processing", "progress": 0, "total": 1, "detail": "Đang cập nhật..."}
     return {"status": "unknown"}
 
 @app.get("/download/{job_id}")
