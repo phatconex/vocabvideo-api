@@ -6,12 +6,11 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-import os, uuid, shutil, tempfile, numpy as np
+import os, uuid, shutil, tempfile
 import urllib.request, zipfile, io, json
 from typing import List
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
-from moviepy import *
 
 app = FastAPI(title="VocabVideo API")
 
@@ -230,18 +229,18 @@ def wrap_text(text, font, max_width, draw):
     return lines
 
 def get_fonts_and_metrics(vocab, cw, cfg, draw):
-    ef = get_font(64, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""))
+    ef = get_font(42, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""))
     max_ew = max([draw.textbbox((0,0), w[0], font=ef)[2] - draw.textbbox((0,0), w[0], font=ef)[0] for w in vocab]) if vocab else 0
-    if max_ew > cw - 20:
-        new_size = max(20, int(64 * (cw - 20) / max_ew))
+    if max_ew > cw - 14:
+        new_size = max(14, int(42 * (cw - 14) / max_ew))
         ef = get_font(new_size, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""))
 
     vi_gf = cfg.get("google_font", "")
     vi_gf_path = get_google_font_path(vi_gf) if vi_gf else None
     if vi_gf_path:
-        vf = ImageFont.truetype(vi_gf_path, 42)
+        vf = ImageFont.truetype(vi_gf_path, 28)
     else:
-        vf = get_vi_font(42)
+        vf = get_vi_font(28)
     
     bbox_en = draw.textbbox((0,0), "Ag", font=ef, anchor="ma")
     en_top = bbox_en[1]
@@ -284,10 +283,10 @@ def draw_word_block(draw, en, vi, cx, y1, cell_h, active, cfg, ef, vf, en_top, s
         curr_y += std_vh + 10
 
 def render_frame(vocab, positions, active_idx, cfg, skip_idx=None):
-    W,H = 1080,1920
+    W,H = 720,1280
     img = Image.new("RGB", (W,H), cfg["bg"])
     draw = ImageDraw.Draw(img, "RGBA")
-    cw = positions[0][2] - positions[0][0] if positions else 306
+    cw = positions[0][2] - positions[0][0] if positions else 204
     ef, vf, en_top, std_eh, vi_top, std_vh = get_fonts_and_metrics(vocab, cw, cfg, draw)
 
     for i,((en,vi),(x1,y1,x2,y2)) in enumerate(zip(vocab, positions)):
@@ -318,16 +317,16 @@ def render_word_cell(item, pos, cfg, ef, vf, en_top, std_eh, vi_top, std_vh, cw)
     return img
 
 def calc_positions(n, cols, cfg, vocab=None):
-    W=1080; mx=60; gx=20; gy=cfg.get("row_spacing", 60); top=100
+    W=720; mx=40; gx=14; gy=cfg.get("row_spacing", 40); top=67
     cw=(W-2*mx-(cols-1)*gx)//cols
 
     # Base heights
-    en_h = 64   # approx English text height
-    pill_pad_y = 15
-    vi_line_h = 42  # approx Vietnamese line height
-    vi_line_gap = 10
-    en_to_pill_gap = 40
-    word_top_pad = 10
+    en_h = 44
+    pill_pad_y = 10
+    vi_line_h = 28
+    vi_line_gap = 7
+    en_to_pill_gap = 27
+    word_top_pad = 7
 
     def cell_height_for_vi_lines(n_lines):
         pill_h = n_lines * vi_line_h + vi_line_gap * (n_lines - 1) + 2 * pill_pad_y
@@ -421,8 +420,8 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         positions = calc_positions(len(vocab), cols, cfg, vocab=vocab)
 
         # We need the fonts to calculate cell_w, cell_h, cw etc.
-        cw = positions[0][2] - positions[0][0] if positions else 306
-        W,H = 1080,1920
+        cw = positions[0][2] - positions[0][0] if positions else 204
+        W,H = 720,1280
         tmp_img = Image.new("RGB", (W,H))
         tmp_draw = ImageDraw.Draw(tmp_img)
         ef, vf, en_top, std_eh, vi_top, std_vh = get_fonts_and_metrics(vocab, cw, cfg, tmp_draw)
