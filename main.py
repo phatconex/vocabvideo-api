@@ -253,34 +253,34 @@ def get_fonts_and_metrics(vocab, cw, cfg, draw):
     return ef, vf, en_top, std_eh, vi_top, std_vh
 
 def draw_word_block(draw, en, vi, cx, y1, cell_h, active, cfg, ef, vf, en_top, std_eh, vi_top, std_vh, cw):
-    pill_pad_x = 40
-    pill_pad_y = 15
-    en_to_pill_gap = 40
+    pill_pad_x = 26
+    pill_pad_y = 10
+    en_to_pill_gap = 27
     
-    max_vi_width = max(100, cw - 2*pill_pad_x - 10)
+    max_vi_width = max(80, cw - 2*pill_pad_x - 10)
     vi_lines = wrap_text(vi, vf, max_vi_width, draw)
     n_vi_lines = len(vi_lines)
     
-    vh = n_vi_lines * std_vh + 10 * (n_vi_lines - 1)
+    vh = n_vi_lines * std_vh + 7 * (n_vi_lines - 1)
     pill_h = vh + 2 * pill_pad_y
     block_h = std_eh + en_to_pill_gap + pill_h
-    block_top = y1 + (cell_h - block_h) // 2
+    block_top = y1 + max(0, (cell_h - block_h) // 2)
     
     ey = block_top
     vy = ey + std_eh + en_to_pill_gap
     
     fill_color = cfg["hl_card"] if active else cfg.get("en_text", (255, 255, 255))
-    draw.text((cx, ey - en_top), en, font=ef, fill=fill_color, anchor="ma")
+    draw.text((cx, ey), en, font=ef, fill=fill_color, anchor="mt")
     
     pill_bg = cfg.get("pill_bg", (255,255,255))
     vi_color = cfg.get("vi_text", (21, 101, 192))
     vw = max([draw.textbbox((0,0), l, font=vf)[2] - draw.textbbox((0,0), l, font=vf)[0] for l in vi_lines]) if vi_lines else 0
-    draw_rounded_rect(draw, (cx-vw//2-pill_pad_x, vy-pill_pad_y, cx+vw//2+pill_pad_x, vy+vh+pill_pad_y), 30, pill_bg)
+    draw_rounded_rect(draw, (cx-vw//2-pill_pad_x, vy-pill_pad_y, cx+vw//2+pill_pad_x, vy+vh+pill_pad_y), 20, pill_bg)
     
     curr_y = vy
     for l in vi_lines:
-        draw.text((cx, curr_y - vi_top), l, font=vf, fill=vi_color, anchor="ma")
-        curr_y += std_vh + 10
+        draw.text((cx, curr_y), l, font=vf, fill=vi_color, anchor="mt")
+        curr_y += std_vh + 7
 
 def render_frame(vocab, positions, active_idx, cfg, skip_idx=None):
     W,H = 720,1280
@@ -564,7 +564,7 @@ def generate_video_task(req: GenerateRequest, job_id: str):
 
         temp_videos = []
 
-        # --- Intro (static frame, no audio, 1.0s) ---
+        # --- Intro (static frame, silent audio, 1.0s) ---
         update_status(job_id, {"status": "processing", "progress": 0, "total": len(vocab), "detail": "Đang tạo intro..."})
         intro_img = render_frame(vocab, positions, -1, cfg)
         intro_path = os.path.join(tmp, "intro.png")
@@ -573,7 +573,9 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         gc.collect()
 
         intro_mp4 = os.path.join(tmp, "intro.mp4")
-        make_video_from_image_and_audio(intro_path, None, intro_mp4, duration=1.0)
+        intro_silence = os.path.join(tmp, "intro_silence.wav")
+        make_silence_wav(intro_silence, 1.0)
+        make_video_from_image_and_audio(intro_path, intro_silence, intro_mp4)
         temp_videos.append(intro_mp4)
 
         # --- Per-word clips ---
@@ -602,7 +604,7 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             temp_videos.append(word_mp4)
             gc.collect()
 
-        # --- Outro (static frame, no audio, 1.5s) ---
+        # --- Outro (static frame, silent audio, 1.5s) ---
         update_status(job_id, {"status": "processing", "progress": len(vocab), "total": len(vocab), "detail": "Đang tạo outro..."})
         outro_img = render_frame(vocab, positions, -1, cfg)
         outro_path = os.path.join(tmp, "outro.png")
@@ -611,7 +613,9 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         gc.collect()
 
         outro_mp4 = os.path.join(tmp, "outro.mp4")
-        make_video_from_image_and_audio(outro_path, None, outro_mp4, duration=1.5)
+        outro_silence = os.path.join(tmp, "outro_silence.wav")
+        make_silence_wav(outro_silence, 1.5)
+        make_video_from_image_and_audio(outro_path, outro_silence, outro_mp4)
         temp_videos.append(outro_mp4)
 
         # Final concatenation
