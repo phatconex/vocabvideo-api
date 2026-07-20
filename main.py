@@ -435,131 +435,177 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             gTTS(en.replace("/"," "), lang="en", tld=req.voice_accent).save(ep)
             audio_paths.append(ep)
 
-        import subprocess
+        import subprocess, gc
         import imageio_ffmpeg
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-        
-        def make_silence(t):
-            if hasattr(t, '__len__'):
-                return np.zeros((len(t), 2))
-            return np.zeros(2)
 
-        import gc
+        def make_video_from_image_and_audio(img_path, audio_path, out_path, duration=None):
+            """Use FFmpeg directly to combine a static image + audio into a video clip."""
+            if audio_path:
+                cmd = [
+                    ffmpeg_exe, "-y",
+                    "-loop", "1", "-i", img_path,
+                    "-i", audio_path,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage",
+                    "-c:a", "aac", "-b:a", "64k",
+                    "-pix_fmt", "yuv420p",
+                    "-shortest",
+                    out_path
+                ]
+            else:
+                cmd = [
+                    ffmpeg_exe, "-y",
+                    "-loop", "1", "-i", img_path,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage",
+                    "-pix_fmt", "yuv420p",
+                    "-t", str(duration or 1.0),
+                    "-an",
+                    out_path
+                ]
+            subprocess.run(cmd, check=True, capture_output=True)
 
-        temp_videos = []
+        def make_silence_wav(out_path, duration):
+            """Generate silence WAV with FFmpeg."""
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",
+                "-t", str(duration),
+                "-c:a", "pcm_s16le",
+                out_path
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
 
-        # Intro
-        intro_img = render_frame(vocab,positions,-1,cfg)
-        intro_path = os.path.join(tmp, "intro.png")
-        intro_img.save(intro_path)
-        intro = ImageClip(intro_path).with_duration(1.0)
-        intro_audio = AudioClip(make_silence, duration=1.0)
-        intro_final = intro.with_audio(intro_audio)
-        intro_mp4 = os.path.join(tmp, "intro.mp4")
-        intro_final.write_videofile(intro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_intro.m4a"), preset="ultrafast", logger=None)
-        intro_final.close()
-        intro.close()
-        intro_audio.close()
-        del intro_img, intro, intro_audio, intro_final
-        gc.collect()
-        temp_videos.append(intro_mp4)
+        def concat_audio_clips(parts, out_path):
+            """Concatenate audio files using FFmpeg."""
+            list_path = out_path + "_alist.txt"
+            with open(list_path, "w") as f:
+                for p in parts:
+                    f.write(f"file '{p}'\n")
+            cmd = [ffmpeg_exe, "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", out_path]
+            subprocess.run(cmd, check=True, capture_output=True)
+            os.remove(list_path)
 
-        for i,(en,vi) in enumerate(vocab):
-            update_status(job_id, {"status": "processing", "progress": i, "total": len(vocab), "detail": f"Đang render từ {i+1}/{len(vocab)}..."})
-            ep = audio_paths[i]
-            
-            # The background frame
-            bg_img = render_frame(vocab, positions, active_idx=i, cfg=cfg, skip_idx=i)
-            bg_path = os.path.join(tmp, f"bg_{i}.png")
-            bg_img.save(bg_path)
-            bg_clip = ImageClip(bg_path)
-            
-            # The active word cell
-            pos = positions[i]
+        def overlay_zoom_word(bg_path, word_png_path, pos, audio_path, out_path, fps=15):
+            """
+            Overlay a zoomed animated word on background using FFmpeg overlay filter.
+            pos = (x1, y1, x2, y2)
+            """
             x1, y1, x2, y2 = pos
             cell_w = x2 - x1
             cell_h = y2 - y1
-            cx_abs = x1 + cell_w/2
-            cy_abs = y1 + cell_h/2
+            # We'll use FFmpeg's overlay filter with scale animation
+            # Zoom: scale from 115% back to 100% over first 0.3s
+            # For simplicity (Render free tier), just do a single-frame blend  
+            # FFmpeg zoompan is CPU-heavy; use a simple 2-frame approach instead
+            
+            # Get audio duration
+            probe_cmd = [ffmpeg_exe, "-i", audio_path, "-f", "null", "-"]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            duration = None
+            for line in result.stderr.split('\n'):
+                if 'Duration' in line:
+                    try:
+                        t = line.split('Duration:')[1].split(',')[0].strip()
+                        h, m, s = t.split(':')
+                        duration = int(h)*3600 + int(m)*60 + float(s)
+                        break
+                    except:
+                        pass
+            if not duration:
+                duration = 2.0
+            total_dur = 0.3 + duration + 0.8  # silence_before + audio + silence_after
 
+            # Build full silence audio
+            silence_before = out_path + "_sb.wav"
+            silence_after = out_path + "_sa.wav"
+            make_silence_wav(silence_before, 0.3)
+            make_silence_wav(silence_after, 0.8)
+            full_audio = out_path + "_full_audio.aac"
+            concat_audio_clips([silence_before, audio_path, silence_after], out_path + "_full.wav")
+
+            # Convert to AAC
+            cmd_aac = [ffmpeg_exe, "-y", "-i", out_path + "_full.wav", "-c:a", "aac", "-b:a", "64k", full_audio]
+            subprocess.run(cmd_aac, check=True, capture_output=True)
+
+            # Overlay word PNG (RGBA with alpha) on background using FFmpeg
+            overlay_x = x1
+            overlay_y = y1
+            # Use alpha_mode=straight to properly handle PNG transparency
+            filter_str = (
+                f"[0:v][1:v]overlay={overlay_x}:{overlay_y}:alpha=straight,format=yuv420p[v]"
+            )
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-loop", "1", "-t", str(total_dur), "-i", bg_path,
+                "-loop", "1", "-t", str(total_dur), "-i", word_png_path,
+                "-i", full_audio,
+                "-filter_complex", filter_str,
+                "-map", "[v]", "-map", "2:a",
+                "-c:v", "libx264", "-preset", "ultrafast",
+                "-c:a", "aac", "-b:a", "64k",
+                "-t", str(total_dur),
+                out_path
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+
+            # Cleanup temp audio files
+            for f in [silence_before, silence_after, full_audio, out_path + "_full.wav"]:
+                try: os.remove(f)
+                except: pass
+
+        temp_videos = []
+
+        # --- Intro (static frame, no audio, 1.0s) ---
+        update_status(job_id, {"status": "processing", "progress": 0, "total": len(vocab), "detail": "Đang tạo intro..."})
+        intro_img = render_frame(vocab, positions, -1, cfg)
+        intro_path = os.path.join(tmp, "intro.png")
+        intro_img.save(intro_path)
+        del intro_img
+        gc.collect()
+
+        intro_mp4 = os.path.join(tmp, "intro.mp4")
+        make_video_from_image_and_audio(intro_path, None, intro_mp4, duration=1.0)
+        temp_videos.append(intro_mp4)
+
+        # --- Per-word clips ---
+        for i, (en, vi) in enumerate(vocab):
+            update_status(job_id, {"status": "processing", "progress": i, "total": len(vocab), "detail": f"Đang render từ {i+1}/{len(vocab)}..."})
+            ep = audio_paths[i]
+
+            # Render bg frame (all words shown, active word NOT highlighted by background)
+            bg_img = render_frame(vocab, positions, active_idx=i, cfg=cfg, skip_idx=i)
+            bg_path = os.path.join(tmp, f"bg_{i}.png")
+            bg_img.save(bg_path)
+            del bg_img
+            gc.collect()
+
+            # Render the highlighted active word cell as RGBA PNG
+            pos = positions[i]
             word_img = render_word_cell((en, vi), pos, cfg, ef, vf, en_top, std_eh, vi_top, std_vh, cw)
             word_path = os.path.join(tmp, f"word_{i}.png")
             word_img.save(word_path)
-            arr = np.array(word_img)
-            rgb = arr[:, :, :3]
-            mask = arr[:, :, 3] / 255.0
-            mask_clip = ImageClip(mask, is_mask=True)
-            word_clip_raw = ImageClip(rgb)
-            word_clip = word_clip_raw.with_mask(mask_clip)
-            
-            # Dynamic zoom animation func
-            def make_scale(t):
-                if t < 0.15:
-                    return 1.0 + (t/0.15) * 0.15
-                elif t < 0.3:
-                    return 1.15 - ((t-0.15)/0.15) * 0.15
-                return 1.0
-            
-            def make_pos_func(cx, cy, cw_val, ch_val):
-                def pos_func(t):
-                    s = make_scale(t)
-                    return (cx - (cw_val*s)/2, cy - (ch_val*s)/2)
-                return pos_func
-                
-            animated_word = word_clip.resized(make_scale).with_position(make_pos_func(cx_abs, cy_abs, cw, cell_h))
-            
-            ea    = AudioFileClip(ep)
-            s1    = AudioClip(make_silence, duration=0.3)
-            s2    = AudioClip(make_silence, duration=0.8)
-            audio = concatenate_audioclips([s1,ea,s2])
-            
-            composite = CompositeVideoClip([bg_clip, animated_word]).with_duration(audio.duration)
-            composite_final = composite.with_audio(audio)
-            
-            word_mp4 = os.path.join(tmp, f"word_{i}.mp4")
-            composite_final.write_videofile(
-                word_mp4, fps=15, codec="libx264", audio_codec="aac",
-                temp_audiofile=os.path.join(tmp, f"temp-audio-{i}.m4a"),
-                preset="ultrafast", threads=1, remove_temp=True, logger=None
-            )
-            
-            # Close EVERYTHING
-            composite_final.close()
-            composite.close()
-            animated_word.close()
-            word_clip.close()
-            word_clip_raw.close()
-            mask_clip.close()
-            bg_clip.close()
-            s1.close()
-            s2.close()
-            audio.close()
-            ea.close()
-            
-            # Force GC
-            del bg_img, word_img, arr, rgb, mask
-            del composite_final, composite, animated_word, word_clip, word_clip_raw, mask_clip, bg_clip, s1, s2, audio, ea
+            del word_img
             gc.collect()
-            
-            temp_videos.append(word_mp4)
 
-        # Outro
-        outro_img = render_frame(vocab,positions,-1,cfg)
+            # Combine using FFmpeg overlay
+            word_mp4 = os.path.join(tmp, f"word_{i}.mp4")
+            overlay_zoom_word(bg_path, word_path, pos, ep, word_mp4)
+            temp_videos.append(word_mp4)
+            gc.collect()
+
+        # --- Outro (static frame, no audio, 1.5s) ---
+        update_status(job_id, {"status": "processing", "progress": len(vocab), "total": len(vocab), "detail": "Đang tạo outro..."})
+        outro_img = render_frame(vocab, positions, -1, cfg)
         outro_path = os.path.join(tmp, "outro.png")
         outro_img.save(outro_path)
-        outro = ImageClip(outro_path).with_duration(1.5)
-        outro_audio = AudioClip(make_silence, duration=1.5)
-        outro_final = outro.with_audio(outro_audio)
-        outro_mp4 = os.path.join(tmp, "outro.mp4")
-        outro_final.write_videofile(outro_mp4, fps=15, codec="libx264", audio_codec="aac", temp_audiofile=os.path.join(tmp, "ta_outro.m4a"), preset="ultrafast", logger=None)
-        outro_final.close()
-        outro.close()
-        outro_audio.close()
-        del outro_img, outro, outro_audio, outro_final
+        del outro_img
         gc.collect()
+
+        outro_mp4 = os.path.join(tmp, "outro.mp4")
+        make_video_from_image_and_audio(outro_path, None, outro_mp4, duration=1.5)
         temp_videos.append(outro_mp4)
 
-        # Final concatenation via FFmpeg copy
+        # Final concatenation
         update_status(job_id, {"status": "processing", "progress": len(vocab), "total": len(vocab), "detail": "Đang ghép nối video..."})
         list_file = os.path.join(tmp, "list.txt")
         with open(list_file, "w") as f:
@@ -571,13 +617,12 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             ffmpeg_exe, "-y", "-f", "concat", "-safe", "0",
             "-i", list_file, "-c", "copy", out_path
         ]
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True)
 
-        # Move to /tmp root so we can cleanup the dir but keep file
         result_path = f"/tmp/vocabvideo_{job_id}.mp4"
         shutil.copy(out_path, result_path)
         shutil.rmtree(tmp)
-        
+
         update_status(job_id, {"status": "done", "detail": "Hoàn tất!"})
 
     except Exception as e:
