@@ -27,6 +27,7 @@ class VocabItem(BaseModel):
 
 class GenerateRequest(BaseModel):
     vocab: List[VocabItem]
+    word_lang: str = "en"
     highlight_color: str = "#ffd54f"
     bg_color: str = "#1ebc46"
     en_text_color: str = "#ffffff"
@@ -46,6 +47,61 @@ def hex_to_rgb(h: str):
 
 import json
 
+def is_cjk_char(ch: str) -> bool:
+    cp = ord(ch)
+    return (
+        0x4E00 <= cp <= 0x9FFF or # CJK Unified Ideographs
+        0x3400 <= cp <= 0x4DBF or # CJK Extension A
+        0x3040 <= cp <= 0x309F or # Hiragana
+        0x30A0 <= cp <= 0x30FF or # Katakana
+        0xAC00 <= cp <= 0xD7AF or # Hangul Syllables
+        0x1100 <= cp <= 0x11FF or # Hangul Jamo
+        0x3130 <= cp <= 0x318F or # Hangul Compatibility Jamo
+        0x0E00 <= cp <= 0x0E7F    # Thai
+    )
+
+def contains_cjk(text: str) -> bool:
+    return any(is_cjk_char(ch) for ch in text)
+
+def get_cjk_font_path(lang: str = "zh-CN", tmp_dir: str = "/tmp/vocab_fonts"):
+    """Get local or download full CJK font for Chinese, Korean, Japanese, etc."""
+    os.makedirs(tmp_dir, exist_ok=True)
+    font_urls = {
+        "zh-CN": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+        "zh-TW": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf",
+        "zh": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+        "ko": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
+        "ja": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+    }
+    target_key = lang if lang in font_urls else "zh-CN"
+    cache_path = os.path.join(tmp_dir, f"noto_{target_key}.ttf")
+    if os.path.exists(cache_path) and os.path.getsize(cache_path) > 1000000:
+        return cache_path
+
+    url = font_urls[target_key]
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=30) as f_res, open(cache_path, 'wb') as f_out:
+            f_out.write(f_res.read())
+        return cache_path
+    except Exception as e:
+        print(f"Error downloading CJK font from Google Fonts GitHub ({target_key}):", e)
+
+    system_cjk_paths = [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    ]
+    for p in system_cjk_paths:
+        if os.path.exists(p):
+            return p
+    return None
+
 def get_google_font_path(family, tmp_dir="/tmp/vocab_fonts"):
     """Download Google Font with Vietnamese subset. Returns None if font doesn't support Vietnamese."""
     os.makedirs(tmp_dir, exist_ok=True)
@@ -62,7 +118,6 @@ def get_google_font_path(family, tmp_dir="/tmp/vocab_fonts"):
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             
-            # Check if this font actually supports vietnamese
             subset_map = data.get("subsetMap", {})
             if not subset_map.get("vietnamese", False):
                 print(f"Font {family} does not support Vietnamese")
@@ -119,8 +174,26 @@ def ensure_vi_fallback():
         print("Error downloading VI fallback font:", e)
     return None
 
-def get_font(size, bold=False, family="Arial", google_font=""):
-    """Get font for English text. Uses Google Font if specified."""
+def detect_cjk_lang(text: str, default_lang: str = "zh-CN") -> str:
+    for ch in text:
+        cp = ord(ch)
+        if 0xAC00 <= cp <= 0xD7AF or 0x1100 <= cp <= 0x11FF or 0x3130 <= cp <= 0x318F:
+            return "ko"
+        if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF:
+            return "ja"
+    return default_lang
+
+def get_font(size, bold=False, family="Arial", google_font="", word_lang="en", sample_text=""):
+    """Get font for main word text. Uses CJK font if CJK text/lang detected."""
+    if (word_lang in ["zh-CN", "zh-TW", "zh", "ko", "ja", "th"]) or contains_cjk(sample_text):
+        target_lang = detect_cjk_lang(sample_text, default_lang=word_lang)
+        cjk_path = get_cjk_font_path(target_lang)
+        if cjk_path and os.path.exists(cjk_path):
+            try:
+                return ImageFont.truetype(cjk_path, size)
+            except Exception as e:
+                print("Error loading CJK font:", e)
+
     paths = (
         ["/System/Library/Fonts/Supplemental/Arial Bold.ttf",
          "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -131,7 +204,6 @@ def get_font(size, bold=False, family="Arial", google_font=""):
          "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
     )
     if google_font:
-        # For English text, try to get any variant (don't require VI subset)
         gpath = _get_any_google_font(google_font)
         if gpath:
             paths = [gpath] + paths
@@ -148,7 +220,10 @@ def get_font(size, bold=False, family="Arial", google_font=""):
         
     for p in paths:
         if os.path.exists(p):
-            return ImageFont.truetype(p, size)
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
     return ImageFont.load_default(size=size)
 
 def _get_any_google_font(family, tmp_dir="/tmp/vocab_fonts"):
@@ -183,14 +258,21 @@ def _get_any_google_font(family, tmp_dir="/tmp/vocab_fonts"):
         print("Error getting English font:", e)
     return None
 
-def get_vi_font(size):
-    """Get font for Vietnamese text - always Vietnamese-capable."""
-    # First ensure fallback exists
+def get_vi_font(size, sample_text=""):
+    """Get font for Vietnamese or definition text."""
+    if contains_cjk(sample_text):
+        target_lang = detect_cjk_lang(sample_text)
+        cjk_path = get_cjk_font_path(target_lang)
+        if cjk_path and os.path.exists(cjk_path):
+            try:
+                return ImageFont.truetype(cjk_path, size)
+            except Exception:
+                pass
+
     vi_path = ensure_vi_fallback()
     paths = []
     if vi_path and os.path.exists(vi_path):
         paths.append(vi_path)
-    # System Vietnamese-capable fallbacks
     paths += [
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -198,7 +280,10 @@ def get_vi_font(size):
     ]
     for p in paths:
         if os.path.exists(p):
-            return ImageFont.truetype(p, size)
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
     return ImageFont.load_default(size=size)
 
 def draw_rounded_rect(draw, xy, r, fill):
@@ -213,40 +298,59 @@ def draw_rounded_rect(draw, xy, r, fill):
 def wrap_text(text, font, max_width, draw):
     words = text.split()
     lines = []
-    current_line = []
+
+    if contains_cjk(text) and len(words) == 1 and len(text) > 1:
+        current_line = ""
+        for char in text:
+            test_line = current_line + char
+            if draw.textbbox((0, 0), test_line, font=font)[2] <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = char
+        if current_line:
+            lines.append(current_line)
+        return lines
+
+    current_words = []
     for word in words:
-        test_line = " ".join(current_line + [word])
-        if draw.textbbox((0,0), test_line, font=font)[2] <= max_width:
-            current_line.append(word)
+        test_line = " ".join(current_words + [word])
+        if draw.textbbox((0, 0), test_line, font=font)[2] <= max_width:
+            current_words.append(word)
         else:
-            if not current_line:
+            if not current_words:
                 lines.append(word)
             else:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-    if current_line:
-        lines.append(" ".join(current_line))
+                lines.append(" ".join(current_words))
+                current_words = [word]
+    if current_words:
+        lines.append(" ".join(current_words))
     return lines
 
 def get_fonts_and_metrics(vocab, cw, cfg, draw):
-    ef = get_font(42, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""))
+    word_lang = cfg.get("word_lang", "en")
+    all_words = " ".join([w[0] for w in vocab]) if vocab else ""
+    all_defs = " ".join([w[1] for w in vocab]) if vocab else ""
+
+    ef = get_font(42, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""), word_lang=word_lang, sample_text=all_words)
     max_ew = max([draw.textbbox((0,0), w[0], font=ef)[2] - draw.textbbox((0,0), w[0], font=ef)[0] for w in vocab]) if vocab else 0
     if max_ew > cw - 14:
         new_size = max(14, int(42 * (cw - 14) / max_ew))
-        ef = get_font(new_size, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""))
+        ef = get_font(new_size, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""), word_lang=word_lang, sample_text=all_words)
 
     vi_gf = cfg.get("google_font", "")
-    vi_gf_path = get_google_font_path(vi_gf) if vi_gf else None
+    vi_gf_path = get_google_font_path(vi_gf) if (vi_gf and not contains_cjk(all_defs)) else None
     if vi_gf_path:
         vf = ImageFont.truetype(vi_gf_path, 28)
     else:
-        vf = get_vi_font(28)
+        vf = get_vi_font(28, sample_text=all_defs)
     
-    bbox_en = draw.textbbox((0,0), "Ag", font=ef, anchor="ma")
+    bbox_en = draw.textbbox((0,0), "Ag" if not contains_cjk(all_words) else (all_words[:1] or "Ag"), font=ef, anchor="ma")
     en_top = bbox_en[1]
     std_eh = bbox_en[3] - bbox_en[1]
     
-    bbox_vi = draw.textbbox((0,0), "Ag", font=vf, anchor="ma")
+    bbox_vi = draw.textbbox((0,0), "Ag" if not contains_cjk(all_defs) else (all_defs[:1] or "Ag"), font=vf, anchor="ma")
     vi_top = bbox_vi[1]
     std_vh = bbox_vi[3] - bbox_vi[1]
     
@@ -257,8 +361,26 @@ def draw_word_block(draw, en, vi, cx, y1, cell_h, active, cfg, ef, vf, en_top, s
     pill_pad_y = 10
     en_to_pill_gap = 27
     
+    word_lang = cfg.get("word_lang", "en")
+    if contains_cjk(en):
+        target_lang = detect_cjk_lang(en, default_lang=word_lang)
+        ef_word = get_font(42, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""), word_lang=target_lang, sample_text=en)
+        # Check text width and fit size if needed
+        w_width = draw.textbbox((0,0), en, font=ef_word)[2] - draw.textbbox((0,0), en, font=ef_word)[0]
+        if w_width > cw - 14:
+            new_size = max(14, int(42 * (cw - 14) / w_width))
+            ef_word = get_font(new_size, bold=True, family=cfg["font_family"], google_font=cfg.get("google_font", ""), word_lang=target_lang, sample_text=en)
+    else:
+        ef_word = ef
+
+    if contains_cjk(vi):
+        target_lang = detect_cjk_lang(vi)
+        vf_word = get_vi_font(28, sample_text=vi)
+    else:
+        vf_word = vf
+
     max_vi_width = max(80, cw - 2*pill_pad_x - 10)
-    vi_lines = wrap_text(vi, vf, max_vi_width, draw)
+    vi_lines = wrap_text(vi, vf_word, max_vi_width, draw)
     n_vi_lines = len(vi_lines)
     
     vh = n_vi_lines * std_vh + 7 * (n_vi_lines - 1)
@@ -270,16 +392,16 @@ def draw_word_block(draw, en, vi, cx, y1, cell_h, active, cfg, ef, vf, en_top, s
     vy = ey + std_eh + en_to_pill_gap
     
     fill_color = cfg["hl_card"] if active else cfg.get("en_text", (255, 255, 255))
-    draw.text((cx, ey), en, font=ef, fill=fill_color, anchor="mt")
+    draw.text((cx, ey), en, font=ef_word, fill=fill_color, anchor="mt")
     
     pill_bg = cfg.get("pill_bg", (255,255,255))
     vi_color = cfg.get("vi_text", (21, 101, 192))
-    vw = max([draw.textbbox((0,0), l, font=vf)[2] - draw.textbbox((0,0), l, font=vf)[0] for l in vi_lines]) if vi_lines else 0
+    vw = max([draw.textbbox((0,0), l, font=vf_word)[2] - draw.textbbox((0,0), l, font=vf_word)[0] for l in vi_lines]) if vi_lines else 0
     draw_rounded_rect(draw, (cx-vw//2-pill_pad_x, vy-pill_pad_y, cx+vw//2+pill_pad_x, vy+vh+pill_pad_y), 20, pill_bg)
     
     curr_y = vy
     for l in vi_lines:
-        draw.text((cx, curr_y), l, font=vf, fill=vi_color, anchor="mt")
+        draw.text((cx, curr_y), l, font=vf_word, fill=vi_color, anchor="mt")
         curr_y += std_vh + 7
 
 def render_frame(vocab, positions, active_idx, cfg, skip_idx=None):
@@ -418,6 +540,7 @@ def generate_video_task(req: GenerateRequest, job_id: str):
             "font_family":    req.font_family,
             "google_font":    req.google_font,
             "row_spacing":    req.row_spacing,
+            "word_lang":      req.word_lang,
         }
         cols     = req.cols
         positions = calc_positions(len(vocab), cols, cfg, vocab=vocab)
@@ -431,10 +554,15 @@ def generate_video_task(req: GenerateRequest, job_id: str):
 
         # Generate TTS
         audio_paths = []
+        word_lang = req.word_lang or "en"
         for i,(en,vi) in enumerate(vocab):
             update_status(job_id, {"status": "processing", "progress": 0, "total": len(vocab), "detail": f"Đang tạo giọng đọc ({i+1}/{len(vocab)})..."})
             ep = os.path.join(tmp, f"en_{i}.mp3")
-            gTTS(en.replace("/"," "), lang="en", tld=req.voice_accent).save(ep)
+            clean_text = en.replace("/", " ")
+            if word_lang == "en":
+                gTTS(clean_text, lang="en", tld=req.voice_accent).save(ep)
+            else:
+                gTTS(clean_text, lang=word_lang).save(ep)
             audio_paths.append(ep)
 
         import subprocess, gc
@@ -648,11 +776,28 @@ def generate_video_task(req: GenerateRequest, job_id: str):
         update_status(job_id, {"status": "error", "detail": str(e)})
 
 @app.get("/api/test_voice")
-def test_voice(tld: str = "com", background_tasks: BackgroundTasks = None):
+def test_voice(tld: str = "com", lang: str = "en", background_tasks: BackgroundTasks = None):
     try:
         fd, path = tempfile.mkstemp(suffix=".mp3", prefix="test_voice_")
         os.close(fd)
-        gTTS("Hello, this is a voice test.", lang="en", tld=tld).save(path)
+        sample_texts = {
+            "en": "Hello, this is a voice test.",
+            "zh-CN": "你好，这是语音测试。",
+            "zh-TW": "你好，這是語音測試。",
+            "ko": "안녕하세요, 음성 테스트입니다.",
+            "ja": "こんにちは、音声テストです。",
+            "fr": "Bonjour, ceci est un test vocal.",
+            "de": "Hallo, das ist ein Sprachtest.",
+            "es": "Hola, esta es una prueba de voz.",
+            "ru": "Здравствуйте, это голосовой тест.",
+            "th": "สวัสดี นี่คือการทดสอบเสียง",
+            "vi": "Xin chào, đây là thử nghiệm giọng đọc."
+        }
+        text = sample_texts.get(lang, "Hello, this is a voice test.")
+        if lang == "en":
+            gTTS(text, lang="en", tld=tld).save(path)
+        else:
+            gTTS(text, lang=lang).save(path)
         if background_tasks:
             background_tasks.add_task(os.remove, path)
         return FileResponse(path, media_type="audio/mpeg")

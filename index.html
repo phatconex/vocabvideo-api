@@ -539,8 +539,24 @@
           </div>
         </div>
 
-        <label style="margin-top:1rem;">Khác (Bố cục, Giọng đọc)</label>
+        <label style="margin-top:1rem;">Khác (Ngôn ngữ, Bố cục, Giọng đọc)</label>
         <div class="color-row" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 15px;">
+          <div class="color-group">
+            <label>Ngôn ngữ từ vựng</label>
+            <select id="word_lang" onchange="onWordLangChange()" style="width: 100%; height: 44px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0 10px; font-size: 14px; background: #f8fafc; outline: none;">
+              <option value="en" selected>🇬🇧 Tiếng Anh</option>
+              <option value="zh-CN">🇨🇳 Tiếng Trung (Giản thể)</option>
+              <option value="zh-TW">🇹🇼 Tiếng Trung (Phồn thể)</option>
+              <option value="ko">🇰🇷 Tiếng Hàn</option>
+              <option value="ja">🇯🇵 Tiếng Nhật</option>
+              <option value="fr">🇫🇷 Tiếng Pháp</option>
+              <option value="de">🇩🇪 Tiếng Đức</option>
+              <option value="es">🇪🇸 Tiếng Tây Ban Nha</option>
+              <option value="ru">🇷🇺 Tiếng Nga</option>
+              <option value="th">🇹🇭 Tiếng Thái</option>
+              <option value="vi">🇻🇳 Tiếng Việt</option>
+            </select>
+          </div>
           <div class="color-group">
             <label>Số cột ngang</label>
             <select id="cols" style="width: 100%; height: 44px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0 10px; font-size: 14px; background: #f8fafc; outline: none;">
@@ -553,8 +569,10 @@
             <label>Khoảng cách dọc</label>
             <input type="number" id="row_spacing" value="60" style="width: 100%; height: 44px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0 14px; font-size: 15px;">
           </div>
+        </div>
+        <div class="color-row" id="voice_accent_row" style="grid-template-columns: 1fr; margin-bottom: 15px;">
           <div class="color-group">
-            <label>Giọng đọc</label>
+            <label>Giọng đọc (Tiếng Anh)</label>
             <select id="voice_accent" style="width: 100%; height: 44px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0 10px; font-size: 14px; background: #f8fafc; outline: none;">
               <option value="com">Mỹ (US)</option>
               <option value="co.uk">Anh (UK)</option>
@@ -569,7 +587,7 @@
       <!-- Paste import -->
       <div class="panel">
         <div class="panel-title"><span class="dot" style="background:#22c55e"></span> Import nhanh</div>
-        <p class="tips" style="margin-bottom:10px;">Paste danh sách từ vựng (dòng: English, Tiếng Việt)</p>
+        <p class="tips" style="margin-bottom:10px;" id="paste_tip">Paste danh sách từ vựng (dòng: Từ vựng, Tiếng Việt)</p>
         <textarea class="paste-area" id="paste_area"
           placeholder="Family, Gia đình&#10;Father, Bố"></textarea>
         <button class="btn-parse" onclick="parsePaste()">⚡ Import danh sách</button>
@@ -579,8 +597,8 @@
       <div class="panel">
         <div class="panel-title"><span class="dot" style="background:#f59e0b"></span> Từ vựng</div>
         <div class="vocab-header">
-          <span>Tiếng Anh</span>
-          <span>Tiếng Việt</span>
+          <span id="col1_header">Từ vựng (Tiếng Anh)</span>
+          <span id="col2_header">Tiếng Việt</span>
           <span></span>
         </div>
         <div id="vocab_list"></div>
@@ -625,6 +643,44 @@
   <script>
     const LS_KEY = 'vocabvideo_state';
 
+    const LANG_MAP = {
+      'en': { name: 'Tiếng Anh', placeholder: 'English' },
+      'zh-CN': { name: 'Tiếng Trung (Giản thể)', placeholder: '中文 (简体)' },
+      'zh-TW': { name: 'Tiếng Trung (Phồn thể)', placeholder: '中文 (繁體)' },
+      'ko': { name: 'Tiếng Hàn', placeholder: '한국어' },
+      'ja': { name: 'Tiếng Nhật', placeholder: '日本語' },
+      'fr': { name: 'Tiếng Pháp', placeholder: 'Français' },
+      'de': { name: 'Tiếng Đức', placeholder: 'Deutsch' },
+      'es': { name: 'Tiếng Tây Ban Nha', placeholder: 'Español' },
+      'ru': { name: 'Tiếng Nga', placeholder: 'Русский' },
+      'th': { name: 'Tiếng Thái', placeholder: 'ไทย' },
+      'vi': { name: 'Tiếng Việt', placeholder: 'Tiếng Việt' }
+    };
+
+    function onWordLangChange() {
+      const lang = document.getElementById('word_lang').value;
+      const info = LANG_MAP[lang] || LANG_MAP['en'];
+      
+      const col1Header = document.getElementById('col1_header');
+      if (col1Header) col1Header.textContent = `Từ vựng (${info.name})`;
+      
+      const pasteTip = document.getElementById('paste_tip');
+      if (pasteTip) pasteTip.textContent = `Paste danh sách từ vựng (dòng: Từ (${info.name}), Tiếng Việt)`;
+
+      const voiceRow = document.getElementById('voice_accent_row');
+      if (voiceRow) {
+        voiceRow.style.display = (lang === 'en') ? 'grid' : 'none';
+      }
+
+      document.querySelectorAll('.vocab-row').forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        if (inputs[0]) inputs[0].placeholder = info.placeholder;
+      });
+
+      saveState();
+      updatePreview();
+    }
+
     function saveState() {
       const vocab = [];
       document.querySelectorAll('.vocab-row').forEach(row => {
@@ -633,6 +689,7 @@
       });
       const state = {
         vocab,
+        word_lang: document.getElementById('word_lang').value,
         bg_color: document.getElementById('bg_color').value,
         en_text_color: document.getElementById('en_text_color').value,
         vi_text_color: document.getElementById('vi_text_color').value,
@@ -652,6 +709,7 @@
         const raw = localStorage.getItem(LS_KEY);
         if (!raw) return false;
         const s = JSON.parse(raw);
+        if (s.word_lang) document.getElementById('word_lang').value = s.word_lang;
         document.getElementById('bg_color').value = s.bg_color || '#1ebc46';
         if (s.en_text_color) document.getElementById('en_text_color').value = s.en_text_color;
         if (s.vi_text_color) document.getElementById('vi_text_color').value = s.vi_text_color;
@@ -667,6 +725,7 @@
         if (s.vocab && s.vocab.length > 0) {
           document.getElementById('vocab_list').innerHTML = '';
           s.vocab.forEach(([en, vi]) => addRow(en, vi));
+          onWordLangChange();
           return true;
         }
       } catch(e) { console.warn('loadState error', e); }
@@ -677,7 +736,10 @@
 
     window.onload = () => {
       const restored = loadState();
-      if (!restored) DEFAULT_VOCAB.forEach(([en, vi]) => addRow(en, vi));
+      if (!restored) {
+        DEFAULT_VOCAB.forEach(([en, vi]) => addRow(en, vi));
+        onWordLangChange();
+      }
       updatePreview();
       document.addEventListener('input', () => { saveState(); updatePreview(); });
       document.addEventListener('change', () => { saveState(); updatePreview(); });
@@ -687,8 +749,11 @@
       const list = document.getElementById('vocab_list');
       const row = document.createElement('div');
       row.className = 'vocab-row';
+      const lang = document.getElementById('word_lang') ? document.getElementById('word_lang').value : 'en';
+      const info = LANG_MAP[lang] || LANG_MAP['en'];
+
       row.innerHTML = `
-        <input type="text" placeholder="English" value="${en}" oninput="updatePreview()">
+        <input type="text" placeholder="${info.placeholder}" value="${en}" oninput="updatePreview()">
         <input type="text" placeholder="Tiếng Việt" value="${vi}" oninput="updatePreview()">
         <button class="btn-remove" onclick="removeRow(this)">×</button>
       `;
@@ -813,7 +878,8 @@
     });
 
     async function generateVideo() {
-      const apiUrl = "https://vocabvideo-api.onrender.com";
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+      const apiUrl = isLocal ? "http://localhost:8000" : "https://vocabvideo-api.onrender.com";
       const vocab = getVocab();
       if (vocab.length === 0) { showStatus('error', '⚠️ Chưa có từ.'); return; }
 
@@ -825,6 +891,7 @@
 
       const body = {
         vocab: vocab,
+        word_lang: document.getElementById('word_lang').value,
         bg_color: document.getElementById('bg_color').value,
         en_text_color: document.getElementById('en_text_color').value,
         vi_text_color: document.getElementById('vi_text_color').value,
